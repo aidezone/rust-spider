@@ -1,0 +1,16 @@
+[package]
+name = "crawler"
+version = "0.1.0"
+edition = "2021"
+authors = ["Your Name <you@example.com>"]
+description = "A simple command line web spider with task management capabilities"
+license = "MIT"
+
+[dependencies]
+clap = { version = "3.0", features = ["derive"] }
+serde = { version = "1.0", features = ["derive"] }  # 序列化和反序列化库
+serde_json = "1.0"  # JSON序列化和反序列化库
+chrono = "0.4"  # 日期和时间处理库
+reqwest = { version = "0.11", features = ["blocking", "socks"] }
+select = "0.5"
+toml = "0.5"
