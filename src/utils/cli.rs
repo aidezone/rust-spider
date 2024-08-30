@@ -1,8 +1,8 @@
 use clap::{Arg, ArgMatches, Command};
 
 /// 解析命令行参数的函数。
-pub fn parse_args() -> ArgMatches {
-    Command::new("spider")
+pub fn parse_args() -> (ArgMatches, Command<'static>) {
+    let app = Command::new("spider")
         .version("1.0")
         .author("Your Name <your.email@example.com>")
         .about("A simple web crawler")
@@ -24,6 +24,15 @@ pub fn parse_args() -> ArgMatches {
                         .takes_value(true)
                         .required(true)
                         .help("The name of the crawling task"),
+                )
+                .arg(
+                    Arg::new("deep")
+                        .short('d')
+                        .long("deep")
+                        .takes_value(true)
+                        .required(true)
+                        .value_parser(clap::value_parser!(u32))
+                        .help("The deep of the spider cycle"),
                 ),
         )
         .subcommand(
@@ -53,6 +62,9 @@ pub fn parse_args() -> ArgMatches {
                         .required(true)
                         .help("The ID of the task to restart"),
                 ),
-        )
-        .get_matches()
+        );
+
+    let matches = app.clone().get_matches();
+
+    (matches, app)
 }

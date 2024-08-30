@@ -1,10 +1,10 @@
 [package]
-name = "crawler"
+name = "spider"
 version = "0.1.0"
 edition = "2021"
-authors = ["Your Name <you@example.com>"]
+authors = ["Gao Yuan <yuan.gao@13un.com>"]
 description = "A simple command line web spider with task management capabilities"
-license = "MIT"
+license = "Apache2.0"
 
 [dependencies]
 clap = { version = "3.0", features = ["derive"] }
@@ -14,3 +14,6 @@ chrono = "0.4"  # 日期和时间处理库
 reqwest = { version = "0.11", features = ["blocking", "socks"] }
 select = "0.5"
 toml = "0.5"
+num_cpus = "1.13"
+crossbeam = "0.8"
+prettytable = "0.10"
