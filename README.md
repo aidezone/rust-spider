@@ -2,6 +2,7 @@
 rust实现的抓站系统
 
 # 目录结构
+```
 crawler/
 │
 ├── src/
@@ -28,7 +29,7 @@ crawler/
 │
 ├── Cargo.toml                  # Cargo配置文件
 └── visited_urls.txt            # 任务状态文件，记录已访问URL
-
+```
 # 编译
 ```bash
 cargo build --release
