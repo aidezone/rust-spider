@@ -1,6 +1,10 @@
 use reqwest::blocking::{Client, RequestBuilder};
 use reqwest::Proxy;
 use reqwest::header::USER_AGENT;
+// 引入宏
+use crate::info;
+use crate::warn;
+use crate::error;
 
 pub struct HttpClient {
     client: Client,
@@ -27,7 +31,20 @@ impl HttpClient {
 
     pub fn get(&self, url: &str) -> Result<String, reqwest::Error> {
         let response = self.client.get(url).send()?;
-        let body = response.text()?;
+        // 打印最终的 URL 和状态码
+        info!("Final URL: {}", response.url());
+        info!("Status: {}", response.status());
+
+        // 检查响应头中的 Content-Encoding
+        let content_encoding = response
+            .headers()
+            .get(reqwest::header::CONTENT_ENCODING)
+            .and_then(|v| v.to_str().ok())
+            .unwrap_or("");
+
+        info!("Content-Encoding: {}", content_encoding);
+
+        let body = response.text_with_charset("UTF-8")?;
         Ok(body)
     }
 }

@@ -3,15 +3,23 @@ use std::fs;
 use std::fs::{File, OpenOptions};
 use std::io::{BufRead, BufReader, Write};
 use std::path::Path;
-use std::sync::Arc;
-use std::sync::Mutex;
-use std::thread;
+use std::sync::{Arc, Mutex, atomic::{AtomicBool, Ordering}};
+use std::thread::{self, JoinHandle};
+use std::fmt;
 use crossbeam::channel;
 use serde::{Serialize, Deserialize};
 use chrono::Utc;
 use super::Worker;
 use crate::fetcher::client::HttpClient;
 use prettytable::{cell, row, Table};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+// 引入宏
+use crate::info;
+use crate::warn;
+use crate::error;
+use crate::TERMINATE;
+// use crate::utils::logging;
+// use crate::utils::logging::{info, warn, error};
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TaskInfo {
@@ -19,22 +27,36 @@ pub struct TaskInfo {
     pub name: String,
     pub progress: u32,
     pub deep: u32,
+    pub status: TaskStatus,
     pub created_at: Option<String>,
     pub ended_at: Option<String>,
 }
 
-#[derive(PartialEq)]
+#[derive(Serialize, Deserialize, PartialEq, Clone)]
 pub enum TaskStatus {
     Idle,
     Running,
-    Paused,
+    Finished,
     Stopped,
 }
 
+// 为 TaskStatus 实现 Display trait
+impl fmt::Display for TaskStatus {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let status = match self {
+            TaskStatus::Idle => "Idle",
+            TaskStatus::Running => "Running",
+            TaskStatus::Finished => "Finished",
+            TaskStatus::Stopped => "Stopped",
+        };
+        write!(f, "{}", status)
+    }
+}
+
+#[derive(Clone)]
 pub struct TaskManager {
     visited: HashSet<String>,
     to_visit: VecDeque<String>,
-    status: TaskStatus,
     task_info: TaskInfo,
     task_dir: String,
 }
@@ -44,7 +66,6 @@ impl TaskManager {
         TaskManager {
             visited: HashSet::new(),
             to_visit: VecDeque::new(),
-            status: TaskStatus::Idle,
             task_dir: String::new(),
             task_info: TaskInfo {
                 id: 0,
@@ -53,6 +74,7 @@ impl TaskManager {
                 progress: 0,
                 created_at: None,
                 ended_at: None,
+                status: TaskStatus::Idle,
             },
         }
     }
@@ -64,7 +86,6 @@ impl TaskManager {
         self.task_info.deep = deep;
         self.task_info.created_at = Some(Self::current_timestamp());
         self.to_visit = VecDeque::from(start_urls);
-        self.status = TaskStatus::Running;
         self.task_dir = format!("tasks/{}", self.task_info.name);
 
         std::fs::create_dir_all(&self.task_dir).expect("Failed to create task directory");
@@ -73,23 +94,42 @@ impl TaskManager {
         Self::save_task_info(&self.task_info, &self.task_dir);
     }
 
-    pub fn run(&mut self) {
-        self.status = TaskStatus::Running;
+    pub fn run(&mut self, m: &Arc<MultiProgress>) {
+
+        self.task_info.status = TaskStatus::Running;
 
         let num_threads = num_cpus::get();
         let (sender, receiver) = channel::unbounded();
 
-        let to_visit = Arc::new(Mutex::new(self.to_visit.clone()));
+        // 计算每个 worker 应处理的 URL 数量
+        let chunk_size = (self.to_visit.len() + num_threads - 1) / num_threads;
+
         let visited = Arc::new(Mutex::new(self.visited.clone()));
         let task_info = Arc::new(Mutex::new(self.task_info.clone()));
         let http_client = Arc::new(HttpClient::new(None));
 
+        // 创建一个新的进度条，长度根据任务总数调整
+        // let pb = ProgressBar::new(self.to_visit.len() as u64);
+        let pb = m.add(ProgressBar::new(self.to_visit.len() as u64));
+        pb.set_style(
+            ProgressStyle::default_bar()
+                .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos:>7}/{len:7} {msg}")
+                .unwrap()  // 确保 template 调用成功，否则会导致 panic
+                .progress_chars("#>-"),
+        );
+
+        // 将 VecDeque 转换为 Vec
+        // let to_visit_vec: Vec<_> = self.to_visit.lock().unwrap().clone().into_iter().collect();
+        let to_visit_vec: Vec<_> = self.to_visit.clone().into_iter().collect();
+
         // 创建 worker 线程
         let mut handles = Vec::new();
-        for _ in 0..num_threads {
+        for chunk in to_visit_vec.chunks(chunk_size) {
+            let worker_to_visit = VecDeque::from(chunk.to_vec()); // 将 chunk 转换为 VecDeque
+
             let worker = Worker::new(
                 Arc::clone(&http_client),
-                Arc::clone(&to_visit),
+                Arc::new(Mutex::new(worker_to_visit)),
                 Arc::clone(&visited),
                 Arc::clone(&task_info),
                 sender.clone(),
@@ -101,18 +141,40 @@ impl TaskManager {
 
             handles.push(handle);
         }
+        info!("Thread Number {:?}", handles.len());
 
         // 主线程处理任务保存和状态检查
-        while self.status == TaskStatus::Running {
+        while self.task_info.status == TaskStatus::Running {
+            // 从 receiver 接收更新的任务信息
             if let Ok(updated_task_info) = receiver.recv() {
-                self.task_info = updated_task_info;
+                self.task_info.progress = updated_task_info.progress;
+                // 更新进度条
+                // pb.inc(1);
+                pb.set_position(self.task_info.progress as u64);
+                // pb.set_position((self.task_info.progress / self.to_visit.len() * 100).into());
+                pb.set_message(format!("Processing item {}", self.task_info.progress));
                 Self::save_task_info(&self.task_info, &self.get_task_dir());
+                if self.task_info.progress == (self.to_visit.len() as u32) {
+                    break;
+                }
+            }
+
+            // 处理终止信号
+            if TERMINATE.load(Ordering::SeqCst) {
+                self.task_info.status = TaskStatus::Stopped;
+                break;
             }
         }
 
         // 等待所有 worker 完成
-        for handle in handles {
+        for handle in handles.drain(..) { // 确保迭代完成后清空 handles
+            info!("Wait for thread exiting...");
             handle.join().unwrap();
+        }
+
+        if self.task_info.status == TaskStatus::Running {
+            self.task_info.status = TaskStatus::Finished;
+            pb.finish_with_message("Done!"); // 完成并显示结束消息
         }
 
         self.task_info.ended_at = Some(Self::current_timestamp());
@@ -140,14 +202,6 @@ impl TaskManager {
             }
         }
         Ok(())
-    }
-
-    pub fn pause(&mut self) {
-        self.status = TaskStatus::Paused;
-    }
-
-    pub fn stop(&mut self) {
-        self.status = TaskStatus::Stopped;
     }
 
     fn generate_task_id() -> u32 {
@@ -184,7 +238,7 @@ impl TaskManager {
     // Function to list tasks
     pub fn list_tasks(&self) {
         let mut table = Table::new();
-        table.add_row(row!["Task ID", "Task Name", "Deep", "Progress", "Created At", "Ended At"]);
+        table.add_row(row!["Task ID", "Task Name", "Deep", "Progress", "Status", "Created At", "Ended At"]);
 
         // Read tasks from the directory
         if let Ok(entries) = fs::read_dir("tasks") {
@@ -197,6 +251,7 @@ impl TaskManager {
                             task_info.name,
                             task_info.deep,
                             task_info.progress,
+                            task_info.status,
                             task_info.created_at.unwrap_or_else(|| "N/A".to_string()),
                             task_info.ended_at.unwrap_or_else(|| "N/A".to_string())
                         ]);

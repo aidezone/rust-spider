@@ -48,6 +48,7 @@ pub fn parse_args() -> (ArgMatches, Command<'static>) {
                         .long("id")
                         .takes_value(true)
                         .required(true)
+                        .value_parser(clap::value_parser!(u32))
                         .help("The ID of the task to resume"),
                 ),
         )
@@ -60,6 +61,7 @@ pub fn parse_args() -> (ArgMatches, Command<'static>) {
                         .long("id")
                         .takes_value(true)
                         .required(true)
+                        .value_parser(clap::value_parser!(u32))
                         .help("The ID of the task to restart"),
                 ),
         );
