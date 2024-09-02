@@ -4,7 +4,7 @@ use clap::{Arg, ArgMatches, Command};
 pub fn parse_args() -> (ArgMatches, Command<'static>) {
     let app = Command::new("spider")
         .version("1.0")
-        .author("Your Name <your.email@example.com>")
+        .author("Gao Yuan <yuan.gao@13un.com>")
         .about("A simple web crawler")
         .subcommand(
             Command::new("create")

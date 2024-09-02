@@ -3,13 +3,14 @@ rust实现的抓站系统
 
 # 目录结构
 ```
-crawler/
+rust-spider/
 │
 ├── src/
 │   ├── main.rs                 # 入口文件，解析命令行参数，启动爬虫
 │   ├── worker/                 # 工作模块，负责任务调度和执行
 │   │   ├── mod.rs              # worker模块入口
-│   │   └── task.rs             # 任务记录与管理
+│   │   ├── task.rs             # 任务记录与管理
+│   │   └── worker.rs           # 线程工作逻辑实现
 │   ├── fetcher/                # 抓取模块
 │   │   ├── mod.rs              # 抓取模块入口
 │   │   └── fetch.rs            # URL抓取实现
@@ -19,11 +20,10 @@ crawler/
 │   ├── writer/                 # 写入模块
 │   │   ├── mod.rs              # 写入模块入口
 │   │   └── markdown_writer.rs  # Markdown写入实现
-│   ├── utils/                  # 工具模块
-│   │   └── mod.rs              # 工具函数与辅助代码
-│   └── aspect/                 # 切面模块
-│       ├── mod.rs              # 切面模块入口
-│       └── logging.rs          # 日志切面
+│   └── utils/                  # 工具模块
+│       ├── mod.rs              # 工具函数与辅助代码
+│       ├── cli.rs              # 命令行参数解析实现
+│       └── logging.rs          # 日志打印相关方法实现
 │
 ├── Cargo.toml                  # Cargo配置文件
 └── visited_urls.txt            # 任务状态文件，记录已访问URL
@@ -36,11 +36,11 @@ cargo build --release
 # 命令运行帮助
 ```
 spider 1.0
-Your Name <your.email@example.com>
+Gao Yuan <yuan.gao@13un.com>
 A simple web crawler
 
 USAGE:
-    crawler [SUBCOMMAND]
+    spider [SUBCOMMAND]
 
 OPTIONS:
     -h, --help       Print help information
@@ -57,7 +57,7 @@ SUBCOMMANDS:
 # Example
 ```bash
 # 创建一个任务（ctrl+c可中断并退出运行）运行过程中输出总体进度以及正在抓取的站点
-spider create -f url_list.txt -n first_task_by_gaoyuan
+spider create -f url_list.txt -n first_task_by_gaoyuan -d 3
 
 # 任务记录列表，打印一个命令行表格，显示任务id、任务名称、进度、创建时间、结束时间
 spider list
