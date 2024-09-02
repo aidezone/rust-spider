@@ -7,8 +7,6 @@ crawler/
 │
 ├── src/
 │   ├── main.rs                 # 入口文件，解析命令行参数，启动爬虫
-│   ├── config/                 # 配置模块
-│   │   └── mod.rs              # 配置解析与管理
 │   ├── worker/                 # 工作模块，负责任务调度和执行
 │   │   ├── mod.rs              # worker模块入口
 │   │   └── task.rs             # 任务记录与管理

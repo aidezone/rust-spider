@@ -19,7 +19,6 @@ lazy_static! {
 }
 
 
-mod config;
 mod worker;
 mod fetcher;
 mod parser;
